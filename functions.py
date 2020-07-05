@@ -1,3 +1,4 @@
+
 import platform
 import base64
 import os
@@ -48,7 +49,7 @@ def intro():
 
 
 def join(name):
-    path = os.path.dirname(os.path.realpath(__file__))
+    path = os.path.dirname(__file__)
     return os.path.join(path, name)
 
 
@@ -114,7 +115,7 @@ def encodepath(path, delete=True):
         extension = "." + ".".join(name.split(".")[1:])
     except:
         extension = ""
-    directory = os.path.dirname(os.path.realpath(path))
+    directory = os.path.dirname(path)
     os.chdir(directory)
     savepath = os.path.join(directory, name)
     savepath = savepath[:-len(extension)] + ".enc"
@@ -136,12 +137,15 @@ def encodepath(path, delete=True):
 def sanitize(path):
     if not windows:
         path = path.replace("\\", "")
+    if windows:
+        if path.startswith("& '") and path.endswith("'"):
+            path = path[3:-1]
     return path
 
 
 def decodepath(path, delete=True):
     path = sanitize(path)
-    directory = os.path.dirname(os.path.realpath(path))
+    directory = os.path.dirname(path)
     os.chdir(directory)
     name = os.path.split(path)[-1]
 
