@@ -109,7 +109,6 @@ def encodepath(path, delete=True):
             return saved
         except KeyboardInterrupt:
             return None
-
     name = os.path.split(path)[-1]
     try:
         extension = "." + ".".join(name.split(".")[1:])
@@ -140,6 +139,8 @@ def sanitize(path):
     if windows:
         if path.startswith("& '") and path.endswith("'"):
             path = path[3:-1]
+    if (path.startswith('"') and path.endswith('"')) or (path.startswith("'") and path.endswith("'")):
+        path = path[1:-1]
     return path
 
 
@@ -180,7 +181,7 @@ def decodepath(path, delete=True):
 def validate(path):
     path = sanitize(path)
     try:
-        _ = Image.open(path)
+        Image.open(path)
     except:
         return False
     return True
