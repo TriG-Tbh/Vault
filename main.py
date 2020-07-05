@@ -5,7 +5,6 @@ import getpass
 import os
 import requests
 import shutil
-import threading
 
 import platform
 windows = (platform.system() == "Windows")
