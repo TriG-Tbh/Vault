@@ -41,15 +41,18 @@ def ask_password():
 
 
 def create_new_key(password, salt):
+    print('Creating a new key')
     kdf = Scrypt(
         salt=salt,
         length=32,
-        n=2**20,
+        n=2**12,
         r=8,
         p=1,
         backend=default_backend(),
     )
-    key = base64.urlsafe_b64encode(kdf.derive(password))
+    key = base64.urlsafe_b64encode(kdf.derive(password.encode('utf8'))).decode('ascii')
+    print('Generated key : %s' % key)
+
     if sys.platform.startswith('win'):
         key_path = 'SOFTWARE\\' + __PROG__.capitalize()
         try:
@@ -63,17 +66,18 @@ def create_new_key(password, salt):
             raise
     else:
         key_path = os.path.join(os.path.expanduser('~/.config'), __PROG__.capitalize())
-        with open(os.path.join(key_path, 'key'), 'w') as f:
-            f.write(key)
+        with open(os.path.join(key_path, 'key'), 'w') as file_handler:
+            file_handler.write(key)
 
 
 def create_new_password(generate_key=False):
     password = ask_password()
-    salt = secrets.token_hex(16)
+    salt = secrets.token_bytes(16)
     password = hashlib.blake2b(
         password.encode('utf8'), salt=salt,
-        person=getpass.getuser()
+        person=getpass.getuser().encode('utf8'),
     ).hexdigest()
+    salt = base64.b64encode(salt).decode('ascii')
 
     if sys.platform.startswith('win'):
         pass_path = 'SOFTWARE\\' + __PROG__.capitalize()
@@ -96,7 +100,7 @@ def create_new_password(generate_key=False):
             f.write(salt)
 
     if generate_key:
-        create_new_key(password, salt)
+        create_new_key(password, base64.b64decode(salt))
 
     return password, salt, True
 
@@ -111,11 +115,11 @@ def get_stored_password():
             )
             password, regtype = winreg.QueryValueEx(registry_key, 'password')
             salt, regtype = winreg.QueryValueEx(registry_key, 'salt')
-            return password, salt, False
-        except WindowsError:
-            return create_new_password(generate_key=True)
-        finally:
+            salt = base64.b64decode(salt)
             winreg.CloseKey(registry_key)
+            return password, salt, False
+        except FileNotFoundError:
+            return create_new_password(generate_key=True)
     else:
         pass_path = os.path.join(os.path.expanduser('~/.config'), __PROG__.capitalize())
         try:
@@ -123,6 +127,7 @@ def get_stored_password():
                 password = f.read()
             with open(os.path.join(pass_path, 'salt'), 'r') as f:
                 salt = f.read()
+                salt = base64.b64decode(salt)
             return password, salt, False
         except FileNotFoundError:
             return create_new_password(generate_key=True)
@@ -141,7 +146,7 @@ def get_encryption_key():
         key_path = os.path.join(os.path.expanduser('~/.config'), __PROG__.capitalize())
         with open(os.path.join(key_path, 'key'), 'r') as f:
             key = f.read()
-    return key
+    return key.encode('ascii')
 
 
 def get_version():
@@ -160,11 +165,12 @@ def login(password=None, tries=3):
             password = getpass.getpass('Password: ')
         password = hashlib.blake2b(
             password.encode('utf8'), salt=salt,
-            person=getpass.getuser()
+            person=getpass.getuser().encode('utf8'),
         ).hexdigest()
         if secrets.compare_digest(password, stored_pass):
             fernet = Fernet(get_encryption_key())
             return fernet
+        print('Incorrect password, try again.')
     return False
 
 
@@ -201,7 +207,9 @@ def encrypt(key=None, fernet=None, path=None, url=None, delete=None):
         filename = os.path.split(path)[-1]
 
     directory = os.path.dirname(path)
-    os.chdir(directory)
+    if directory:
+        print('Changing path to directory %s' % directory)
+        os.chdir(directory)
     savepath = os.path.join(directory, filename + '.enc')
     logger.info('The file will be saved to %s', savepath)
     data = file_handler.read()
@@ -223,7 +231,9 @@ def decrypt(key=None, fernet=None, path=None, delete=None):
         return errno.EBADF
 
     directory = os.path.dirname(path)
-    os.chdir(directory)
+    if directory:
+        print('Changing path to directory : %s' % directory)
+        os.chdir(directory)
     filename = os.path.split(path)[-1]
 
     with open(path, 'rb') as file_handler:
@@ -263,12 +273,12 @@ def main():
     encrypt_parser = subparsers.add_parser('encrypt')
     encrypt_parser.add_argument('path')
     encrypt_parser.add_argument('--url', '-u', action='store_true', help='Specify an URL instead of a path')
-    parser.add_argument('--delete', '-d', action='store_true', help='Delete the original file')
+    encrypt_parser.add_argument('--delete', '-d', action='store_true', help='Delete the original file')
     encrypt_parser.set_defaults(callback=encrypt)
 
     decrypt_parser = subparsers.add_parser('decrypt')
     decrypt_parser.add_argument('path')
-    parser.add_argument('--delete', '-d', action='store_true', help='Delete the original file')
+    decrypt_parser.add_argument('--delete', '-d', action='store_true', help='Delete the original file')
     decrypt_parser.set_defaults(callback=decrypt)
 
     password_parser = subparsers.add_parser('pass')
